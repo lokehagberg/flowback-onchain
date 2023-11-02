@@ -12,6 +12,7 @@ contract Predictions is Polls{
     mapping(predictionBet => uint) internal bets;
     mapping(uint => Prediction[]) public predictions;
     
+    Polls pollsInstance = new Polls();
 
     event PredictionCreated(string description, uint likelihood);
 
@@ -24,11 +25,19 @@ contract Predictions is Polls{
     function createPrediction(
         uint _proposalId,
         string memory _description,
-        uint _likelihood
+        uint _likelihood,
+        uint _pollId // Added pollId as function parameter
         ) public {
             
-            proposals[_proposalId].predictionCount++; //!
-            uint _predictionId = proposals[_proposalId].predictionCount;
+            Proposal storage proposal = proposals[_pollId][_proposalId]; // Get the proposal from the proposals mapping
+
+            proposal.predictionCount++; //Increment by one
+            uint _predictionId = proposal.predictionCount; // Set prediction id
+
+            proposals[_pollId][_proposalId] = proposal; // Update mapping
+
+            // proposals[_proposalId].predictionCount++; //!
+            // uint _predictionId = proposals[_proposalId].predictionCount;
 
             predictions[_proposalId].push(Prediction({
                 predictionId: _predictionId,
