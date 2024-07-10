@@ -1,20 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.0;
-import './Prediction.sol';
+pragma solidity ^0.8.18;
 
-contract PredictionBets is Predictions {
+import {PollHelpers} from './PollHelpers.sol';
+import {ProposalHelpers} from './ProposalHelpers.sol';
+import {PredictionHelpers} from './PredictionHelpers.sol';
+import {PredictionBetHelpers} from './PredictionBetHelpers.sol';
 
-    struct PredictionBet{
-        uint pollId;
-        uint proposalId;
-        uint predictionId;
-        bool bet;
-        uint likelihood;
-        PollPhase phase;   //Phases
+contract PredictionBets is PollHelpers, ProposalHelpers, PredictionHelpers, PredictionBetHelpers {
+
+    event PredictionBetCreated(uint indexed predictionId, bool bet, uint likelihood);
+
+    function requirePollPropPredToExist(uint _pollId, uint _proposalId, uint _predictionId) internal view returns (bool) {
+        uint pollsLength = pollCount;
+        for (uint i = 0; i < pollsLength; i++) {
+            if (polls[i].pollId == _pollId) {
+                uint proposalsLength = proposals[_pollId].length;
+                for (uint j = 0; j < proposalsLength; j++) {
+                    if (proposals[_pollId][j].proposalId == _proposalId) {
+                        uint predictionsLength = predictions[_proposalId].length;
+                        for (uint k = 0; k < predictionsLength; k++) {
+                            if (predictions[_proposalId][k].predictionId == _predictionId) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            }
+        }
+        return false;
     }
 
-    mapping(uint => PredictionBet[]) public predictionBets;
-    // event PredictionBetCreated(uint indexed predictionId, bool bet, uint likelihood);
+    modifier requireExist(uint _pollId, uint _proposalId, uint _predictionId) {
+        require(requirePollPropPredToExist(_pollId, _proposalId, _predictionId), "Wrong poll, proposal or prediction");
+        _;
+    }
 
     function placePredictionBet(
         uint _pollId,
@@ -22,72 +43,20 @@ contract PredictionBets is Predictions {
         uint _predictionId,
         uint _likelihood,
         bool _bet
-
-    )  external {
-        // require(!predictionFinished, "Prediction is finished");
-        require(requirePredictionToExist(_pollId, _proposalId, _predictionId), "Prediction does not exist");
-        // require(_likelihood >=  0 && _likelihood <= 1, "Value needs to be between 0-1");
-       
-        //phases
-            if (predictions[_proposalId][_predictionId].phase == PollPhase.predictionBetPhase) {
-                    predictionBets[_predictionId].push(PredictionBet({
-                        pollId: _pollId,
-                        proposalId: _proposalId,
-                        predictionId: _predictionId,
-                        likelihood: _likelihood,
-                        bet: _bet,
-                        phase: PollPhase.completedPhase
-                
-                    }));
-            }
-            // bool rightPhase = predictions[_proposalId][_predictionId].phase == PollPhase.predictionBetPhase;
-            // require(rightPhase, "You can not bet at this time");
-            
-    
-
-        // emit PredictionBetCreated(_predictionId, _bet, _likelihood);
-
-             
-    }
-    function getPredictionBets(uint _pollId, uint _proposalId, uint _predictionId) external view returns(PredictionBet[] memory) {
-        uint proposalsLength = proposals[_pollId].length;
-        for (uint a=0; a <= proposalsLength;){   
-            if(proposals[_pollId][a].proposalId == _proposalId){
-                uint predictionsLength =predictions[_proposalId].length;
-                for (uint b=0; b <= predictionsLength;b++){   
-                    if(predictions[_proposalId][b].predictionId == _predictionId)      //gasoptimering
-                        return predictionBets[_predictionId];
-                    unchecked {
-                        ++b;
-                    } 
-                }  
-            }
-            unchecked {
-                ++a;
-            }  
-        }  
-        return predictionBets[_predictionId]; 
-    }
-    function requirePredictionToExist(uint _pollId, uint _proposalId, uint _predictionId) internal view returns (bool){
-
-        uint proposalsLength = proposals[_pollId].length;
-        for (uint a=0; a <= proposalsLength;){
-            if (proposals[_pollId][a].proposalId ==_proposalId){
-                uint predictionsLength = predictions[_proposalId].length;
-                for (uint b=0; b <= predictionsLength;){   
-                    if (predictions[_proposalId][b].predictionId ==_predictionId)   
-                        return true;
-                        unchecked {
-                            ++b;
-                        }  
-                }    
-                return false;   
-            }
-            unchecked {
-            ++a;
-            }
-        }    
-        return false;
+    ) external requireExist(_pollId, _proposalId, _predictionId) {
+        require(_likelihood > 0, "Likelihood must be greater than 0");
+        PredictionBet[] storage bets = predictionBets[_predictionId];
+        bets.push(PredictionBet({
+            pollId: _pollId,
+            proposalId: _proposalId,
+            predictionId: _predictionId,
+            likelihood: _likelihood,
+            bet: _bet
+        }));
+        emit PredictionBetCreated(_predictionId, _bet, _likelihood);
     }
 
+    function getPredictionBets(uint _pollId, uint _proposalId, uint _predictionId) external requireExist(_pollId, _proposalId, _predictionId) view returns (PredictionBet[] memory) {
+        return predictionBets[_predictionId];
+    }
 }

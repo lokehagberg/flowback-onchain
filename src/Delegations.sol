@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.18;
 
-import './RightToVote.sol';
+import {RightToVote} from './RightToVote.sol';
 
 /**
  * @title Delegations
  * @dev A contract that manages delegations for different groups.
  * @author @EllenLng, @KristofferGW
 */
+
 contract Delegations is RightToVote {
 
     //Mapping over who is delegate in which group
@@ -17,7 +18,7 @@ contract Delegations is RightToVote {
     mapping(uint => uint) internal groupDelegateCount;
     
     // Mapping over which groups users have delegated in by address
-    mapping(address => uint[]) internal groupDelegationsByUser;
+    mapping(address => GroupDelegation[]) internal groupDelegationsByUser;
 
     // A struct that represents a delegate
     struct GroupDelegate {
@@ -28,24 +29,36 @@ contract Delegations is RightToVote {
         uint groupDelegateId; // The delegate ID of the delegate.
     }
 
+    struct GroupDelegation {
+        uint groupId;
+        uint timeOfDelegation;
+    }
+
     // Event triggered when a new delegate is created.
     event NewDelegate(address indexed delegate, uint indexed groupId, uint delegatedVotes, address[] delegationsFrom, uint groupDelegateId);
     
     // Event triggered when a new delegation is created.
     event NewDelegation(address indexed from, address indexed to, uint indexed groupId, uint delegatedVotes, address[] delegationsFrom);
-    
-    // Event triggered when a delegation is removed.
-    event DelegationRemoved(address indexed from, address indexed by, uint indexed groupId, uint delegatedVotes);
 
     // Event triggered when a delegate resigns.
     event DelegateResignation(address indexed delegate, uint indexed groupId);
     
+   
+    function _requireAddressIsDelegate(uint _groupId, address _potentialDelegate) private view {
+        require(addressIsDelegate(_groupId, _potentialDelegate), "The address is not a delegate in the specified group");
+    }
+
+    modifier requireAddressIsDelegate(uint _groupId, address _potentialDelegate){
+        _requireAddressIsDelegate(_groupId, _potentialDelegate);
+        _;
+    }
     /**
      * @dev Allows a user to become a delegate in a specific group.
      * @param _groupId The group ID of the group the delegate is a delegate in.
     */
     function becomeDelegate(uint _groupId) public {
         require(!addressIsDelegate(_groupId, msg.sender), "You are already a delegate in specific group");
+        require(isUserMemberOfGroup(_groupId), "You need to be a member of the group to become a delegate");
         groupDelegateCount[_groupId]++;
 
         GroupDelegate memory newGroupDelegate = GroupDelegate({
@@ -66,14 +79,18 @@ contract Delegations is RightToVote {
      * @param _groupId The group ID of the group the delegate is a delegate in.
      * @param _delegateTo The address of the delegate to delegate to.
     */
-    function delegate(uint _groupId, address _delegateTo) public {
-        require(addressIsDelegate(_groupId, _delegateTo), "The address is not a delegate in the specified group");
-        require(delegaterIsInGroup(_groupId), "You can only delegate in groups you are a member of.");
+    function delegate(uint _groupId, address _delegateTo) public requireAddressIsDelegate(_groupId, _delegateTo) {
+        require(isUserMemberOfGroup(_groupId), "You can only delegate in groups you are a member of.");
         require(!hasDelegatedInGroup(_groupId), "You have an active delegation in this group.");
         require(_delegateTo != msg.sender, "You can not delegate to yourself");
 
         // add the group to the user's groupDelegationsByUser array
-        groupDelegationsByUser[msg.sender].push(_groupId);
+        GroupDelegation memory newGroupDelegation = GroupDelegation({
+            groupId: _groupId,
+            timeOfDelegation: block.timestamp
+        });
+
+        groupDelegationsByUser[msg.sender].push(newGroupDelegation);
 
         // increase the delegates delegatedVotes
         uint delegatedVotes;
@@ -132,7 +149,7 @@ contract Delegations is RightToVote {
         // remove the group from the user's groupDelegationsByUser array
         arrayLength = groupDelegationsByUser[msg.sender].length;
         for (uint i; i < arrayLength;) {
-            if (groupDelegationsByUser[msg.sender][i] == _groupId) {
+            if (groupDelegationsByUser[msg.sender][i].groupId == _groupId) {
                 delete groupDelegationsByUser[msg.sender][i];
             }
 
@@ -140,16 +157,14 @@ contract Delegations is RightToVote {
                 ++i;
             }
         }
-        emit DelegationRemoved(_delegate, msg.sender, _groupId, delegatedVotes);
     }
 
     /**
      * @dev Allows a user to resign as a delegate in a specific group.
      * @param _groupId The group ID of the group the delegate is a delegate in.
     */
-    function resignAsDelegate(uint _groupId) public {
+    function resignAsDelegate(uint _groupId) public requireAddressIsDelegate(_groupId, msg.sender){
         address[] memory affectedUsers;
-         require(addressIsDelegate(_groupId, msg.sender), "You are not a delegate in requested group");
 
         // remove groupDelegationsByUsers for affected users
         uint arrayLength = groupDelegates[_groupId].length;
@@ -167,7 +182,7 @@ contract Delegations is RightToVote {
         for (uint i; i < affectedUsers.length; i++) {
             arrayLength = groupDelegationsByUser[affectedUsers[i]].length;
             for (uint k; k < arrayLength;) {
-                if (groupDelegationsByUser[affectedUsers[i]][k] == _groupId) {
+                if (groupDelegationsByUser[affectedUsers[i]][k].groupId == _groupId) {
                     delete groupDelegationsByUser[affectedUsers[i]][k];
                 }
 
@@ -199,33 +214,13 @@ contract Delegations is RightToVote {
     }
 
     /**
-     * @dev Checks if a user is a member of a specific group.
-     * @param _groupId The group ID of the group to check.
-     * @return isInGroup Returns true if the user is a member of the group, false otherwise.
-    */
-    function delegaterIsInGroup(uint _groupId) view private returns(bool isInGroup) {
-        uint arrayLength = voters[msg.sender].groups.length;
-        for (uint i; i < arrayLength;) {
-            if (voters[msg.sender].groups[i] == _groupId) {
-                return true;
-            }
-
-            unchecked {
-                ++i;
-            }
-        }
-        return false;
-    }
-
-    /**
      * @dev Checks if a user has delegated in a specific group.
      * @param _groupId The group ID of the group to check.
      * @return hasDelegated Returns true if the user has delegated in the group, false otherwise.
     */
     function hasDelegatedInGroup(uint _groupId) public view returns (bool) {
-        uint[] memory userDelegatedGroups = groupDelegationsByUser[msg.sender];
-        for (uint i; i < userDelegatedGroups.length;) {
-            if (userDelegatedGroups[i] == _groupId) {
+        for (uint i = 0; i < groupDelegationsByUser[msg.sender].length;) {
+            if (groupDelegationsByUser[msg.sender][i].groupId == _groupId) {
                 return true;
             }
 
@@ -233,6 +228,7 @@ contract Delegations is RightToVote {
                 ++i;
             }
         }
+        
         return false;
     }
 

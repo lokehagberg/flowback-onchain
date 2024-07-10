@@ -2,29 +2,79 @@
 pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
-import "src/RightToVote.sol";
+import "src/Polls.sol";
 import "forge-std/Vm.sol";
 
-contract RightToVoteTest is Test, RightToVote {
+contract RightToVoteTest is Test, Polls {
 
-    RightToVote public rightToVote;
-    //vm.startPrank(0x18d1161FaBAC4891f597386f0c9B932E3fD3A1FD);
+    Polls public testPolls;
+    address user1 = address(0x1);
+    address user2 = address(0x2);
     
     function setUp() public {
-        rightToVote = new RightToVote();
+        testPolls = new Polls();
     }
 
     function run() public {
        vm.broadcast(); 
     }
 
-    function testGiveRightToVote(uint group) public {
-        rightToVote.giveRightToVote(group);
-        assertTrue(rightToVote.checkRightsInGroup(group));
+    function testEmitPredictionCreated() public {
+        vm.expectEmit();
+        emit GroupMembershipChanged(msg.sender, 1, true);
+        testPolls.becomeMemberOfGroup(1);  
     }
 
-    function testRemoveRightToVote(uint group) public {
-        assertEq(rightToVote.checkRightsInGroup(group), false);
+    function testbecomeMemberOfGroup(uint group) public {
+        vm.startPrank(user1);
+        assertFalse(testPolls.isUserMemberOfGroup(group));
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(group);
+        assertTrue(testPolls.isUserMemberOfGroup(group));
+        assertEq(testPolls.getGroupsUserIsMemberIn()[0], group);
     }
-    
+
+    function testRemoveGroupMembership(uint group) public {
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(group);
+        assertTrue(testPolls.isUserMemberOfGroup(group));
+        vm.startPrank(user1);
+        testPolls.removeGroupMembership(group);
+        assertEq(testPolls.isUserMemberOfGroup(group), false);
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(1);
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(2);
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(3);
+        uint [] memory groupsOne = testPolls.getGroupsUserIsMemberIn();
+        assertEq(groupsOne.length, 3);
+        vm.startPrank(user1);
+        testPolls.removeGroupMembership(2);
+        uint [] memory groups = testPolls.getGroupsUserIsMemberIn();
+        assertEq(testPolls.getGroupsUserIsMemberIn()[0], 1);
+        assertEq(testPolls.getGroupsUserIsMemberIn()[1], 3);
+        assertEq(groups.length, 2);
+
+
+
+        
+    }
+    function testGetGroupsUserIsMemberIn() public {
+        uint [] memory groupsOne = testPolls.getGroupsUserIsMemberIn();
+        assertEq(groupsOne.length, 0);
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(1);
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(4);
+        uint [] memory groups = testPolls.getGroupsUserIsMemberIn();
+        assertTrue(groups.length>0);
+        assertEq(groups.length, 2);
+        assertEq(testPolls.getGroupsUserIsMemberIn()[0], 1);
+        assertEq(testPolls.getGroupsUserIsMemberIn()[1], 4);
+        vm.startPrank(user1);
+        testPolls.becomeMemberOfGroup(3);
+        assertEq(testPolls.getGroupsUserIsMemberIn()[2], 3);
+
+    }   
 }

@@ -1,18 +1,16 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: GPL-3.0
 
-import "forge-std/Test.sol";
-import "src/Polls.sol";
+pragma solidity ^0.8.18;
 
-contract PollsTest is Test, Polls {
-    function setUp() public {}
+import {Test, console} from 'forge-std/Test.sol';
+import {Polls} from '../src/Polls.sol';
+import {DeployPolls} from '../script/DeployPolls.s.sol';
 
-    function run() public {
-        vm.broadcast();
+contract TestPolls is Test {
+    Polls polls;
+
+    function setUp() external {
+        DeployPolls deployPolls = new DeployPolls();
+        polls = deployPolls.run();
     }
-
-    function testCreatePoll() public {
-        
-    }
-    
 }
